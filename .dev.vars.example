@@ -1,0 +1,16 @@
+# Copy to .dev.vars (git-ignored) and fill in for local development.
+# In production these are set via `wrangler secret put <NAME>`, not this file.
+
+SESSION_JWT_SECRET=replace-with-a-long-random-string
+WEBHOOK_SHARED_SECRET=replace-with-a-long-random-string
+
+MS_TENANT_ID=
+MS_CLIENT_ID=
+MS_CLIENT_SECRET=
+MS_SHAREPOINT_SITE_ID=
+MS_SHAREPOINT_DRIVE_ID=
+
+GOOGLE_SERVICE_ACCOUNT_EMAIL=
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=
+GOOGLE_IMPERSONATED_ADMIN_EMAIL=
+GOOGLE_DRIVE_ROOT_FOLDER_ID=

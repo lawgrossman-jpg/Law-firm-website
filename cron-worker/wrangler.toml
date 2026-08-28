@@ -1,0 +1,13 @@
+name = "law-firm-sync-cron"
+main = "index.js"
+compatibility_date = "2025-06-01"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+# The main app's deployed URL (Workers.dev or custom domain).
+APP_BASE_URL = "https://REPLACE_WITH_YOUR_MAIN_APP_URL"
+
+# Secret (set with `wrangler secret put CRON_SECRET` from inside this
+# cron-worker/ directory): must match the main app's WEBHOOK_SHARED_SECRET.

@@ -1,0 +1,43 @@
+{
+  "name": "law-firm-management",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare deploy",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply law-firm-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply law-firm-db --remote",
+    "templates:generate": "node scripts/generate-templates.mjs && node scripts/seed-templates.mjs"
+  },
+  "dependencies": {
+    "@opennextjs/cloudflare": "^1.20.4",
+    "bcryptjs": "^3.0.3",
+    "docxtemplater": "^3.69.3",
+    "drizzle-orm": "^0.45.2",
+    "jose": "^6.2.10",
+    "next": "16.3.3",
+    "pizzip": "^3.2.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "docx": "^9.7.1",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.3",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wrangler": "^4.127.0"
+  }
+}

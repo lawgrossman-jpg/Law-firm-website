@@ -1,0 +1,37 @@
+name = "law-firm-management"
+main = ".open-next/worker.js"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+# Free Cloudflare D1 database. Create with:
+#   wrangler d1 create law-firm-db
+# then paste the returned database_id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "law-firm-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "drizzle"
+
+# NOTE: this worker (built via @opennextjs/cloudflare) has no `scheduled`
+# handler of its own, so the hourly subscription-renewal job runs from a
+# separate tiny worker instead — see cron-worker/.
+
+[vars]
+APP_BASE_URL = "https://REPLACE_WITH_YOUR_WORKERS_DEV_OR_CUSTOM_DOMAIN"
+
+# Secrets (do NOT put these here — set with `wrangler secret put <NAME>`):
+#   SESSION_JWT_SECRET
+#   MS_TENANT_ID
+#   MS_CLIENT_ID
+#   MS_CLIENT_SECRET
+#   MS_SHAREPOINT_SITE_ID
+#   MS_SHAREPOINT_DRIVE_ID
+#   WEBHOOK_SHARED_SECRET
+#   GOOGLE_SERVICE_ACCOUNT_EMAIL
+#   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+#   GOOGLE_IMPERSONATED_ADMIN_EMAIL
+#   GOOGLE_DRIVE_ROOT_FOLDER_ID
