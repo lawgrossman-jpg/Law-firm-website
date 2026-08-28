@@ -13,7 +13,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "law-firm-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "f7a74468-86c8-43dd-a028-8234dd3ea8d8"
 migrations_dir = "drizzle"
 
 # NOTE: this worker (built via @opennextjs/cloudflare) has no `scheduled`
