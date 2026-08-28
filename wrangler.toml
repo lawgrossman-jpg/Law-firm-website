@@ -1,4 +1,4 @@
-name = "law-firm-management"
+name = "law-firm-websiteod"
 main = ".open-next/worker.js"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
