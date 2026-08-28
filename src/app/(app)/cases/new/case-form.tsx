@@ -69,7 +69,7 @@ export function CaseForm({
             ))}
           </select>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <input name="newClientName" placeholder="שם מלא" className="input" />
             <input name="newClientIdNumber" placeholder="ת״ז" className="input" />
             <input name="newClientPhone" placeholder="טלפון" className="input" />

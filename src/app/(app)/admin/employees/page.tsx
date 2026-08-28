@@ -29,7 +29,7 @@ export default async function EmployeesPage() {
         <EmployeeForm />
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-right text-slate-500">
             <tr>

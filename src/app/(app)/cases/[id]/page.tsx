@@ -48,7 +48,7 @@ export default async function CaseDetailPage({
         </div>
       )}
 
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm text-slate-500">{caseRow.caseNumber}</p>
           <h1 className="text-2xl font-semibold text-slate-900">{caseRow.title}</h1>
@@ -78,7 +78,7 @@ export default async function CaseDetailPage({
 
       <section>
         <h2 className="mb-3 text-lg font-medium text-slate-900">צדדים בתיק</h2>
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-right text-slate-500">
               <tr>
@@ -109,7 +109,7 @@ export default async function CaseDetailPage({
             יצירת מסמך לתיק זה
           </Link>
         </div>
-        <div className="mb-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="mb-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-right text-slate-500">
               <tr>
@@ -147,7 +147,7 @@ export default async function CaseDetailPage({
 
       <section>
         <h2 className="mb-3 text-lg font-medium text-slate-900">מסמכים</h2>
-        <div className="mb-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="mb-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-right text-slate-500">
               <tr>

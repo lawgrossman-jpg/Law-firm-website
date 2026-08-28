@@ -20,7 +20,7 @@ export default async function TasksPage() {
 
       <NewTaskInlineForm employees={employees.map((e) => ({ id: e.id, fullName: e.fullName }))} />
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-right text-slate-500">
             <tr>

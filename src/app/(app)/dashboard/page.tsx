@@ -43,7 +43,7 @@ export default async function DashboardPage() {
 
       <section>
         <h2 className="mb-3 text-lg font-medium text-slate-900">משימות קרובות</h2>
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-right text-slate-500">
               <tr>
@@ -74,7 +74,7 @@ export default async function DashboardPage() {
 
       <section>
         <h2 className="mb-3 text-lg font-medium text-slate-900">פעילות אחרונה</h2>
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <ul className="divide-y divide-slate-100 text-sm">
             {recentAudit.length === 0 && (
               <li className="px-4 py-3 text-slate-400">אין פעילות עדיין</li>
