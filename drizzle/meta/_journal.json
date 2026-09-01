@@ -15,6 +15,13 @@
       "when": 1787905640605,
       "tag": "0001_loving_jane_foster",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788265146391,
+      "tag": "0002_clammy_maggott",
+      "breakpoints": true
     }
   ]
 }

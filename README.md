@@ -122,19 +122,20 @@ npm run db:migrate:remote     # יוצר סכמה + זורע נתוני התחל
    `Sites.ReadWrite.All`, `Files.ReadWrite.All`, `User.Read.All` — ולחצו
    **Grant admin consent**.
 3. תחת **Certificates & secrets** צרו **Client secret** חדש.
-4. אתרו את ה-Site ID וה-Drive ID של ספריית המסמכים ב-SharePoint:
+4. אתרו את ה-Site ID של אתר ה-SharePoint (דרך
+   [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer)):
    ```
    GET https://graph.microsoft.com/v1.0/sites/{hostname}:/sites/{site-name}
-   GET https://graph.microsoft.com/v1.0/sites/{site-id}/drives
    ```
-   (אפשר גם דרך [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer)).
+   האתר יכול להכיל **כמה ספריות מסמכים** (לא רק אחת) — הן מנוהלות בטבלת
+   `sharepoint_libraries` ב-D1, לא בהגדרות סביבה. סעיף 4 למטה מסביר איך
+   לזרוע אותן (או להשתמש בגילוי האוטומטי דרך `/admin/sync`).
 5. הגדירו את הסודות:
    ```bash
    npx wrangler secret put MS_TENANT_ID
    npx wrangler secret put MS_CLIENT_ID
    npx wrangler secret put MS_CLIENT_SECRET
    npx wrangler secret put MS_SHAREPOINT_SITE_ID
-   npx wrangler secret put MS_SHAREPOINT_DRIVE_ID
    ```
 
 ### 3. Google Cloud (Google Drive, Workspace domain-wide delegation)
@@ -197,13 +198,20 @@ header `x-cron-secret: <WEBHOOK_SHARED_SECRET>` פעם בשעה — עובד ב�
 
 לאחר שהכל פרוס והסודות מוגדרים:
 
-1. הריצו `POST /api/cron/tick` פעם אחת ידנית (או המתינו לטריגר הראשון) —
-   זה יוצר את מנויי ה-webhook הראשוניים.
-2. ב-Admin > סנכרון, לחצו **הרצת הגירה מלאה** — מעתיקה את כל העץ הקיים
-   מ-SharePoint ל-Drive (ריצה חד-פעמית; ניתן להריץ שוב בבטחה במקרה כשל
-   חלקי).
-3. מכאן ואילך, כל שינוי בכל אחד מהצדדים מסונכרן כמעט מיידית דרך ה-webhooks,
-   עם fallback של poll שעתי דרך ה-cron.
+1. ודאו שטבלת `sharepoint_libraries` מכילה את ספריות המסמכים של האתר —
+   `drizzle/seed_sharepoint_libraries.sql` כבר מכיל את כל הספריות הקיימות
+   (עם "תיקים פתוחים" מסומנת כספרייה הראשית לתיקים חדשים), ונטען אוטומטית
+   ע"י `npm run db:migrate:remote`/`db:migrate:local`. ספרייה חדשה
+   שתיווצר ב-SharePoint בעתיד תתגלה אוטומטית (ראו סעיף הבא) — או דרך
+   הכפתור **גילוי ספריות** ב-Admin > סנכרון.
+2. הריצו `POST /api/cron/tick` פעם אחת ידנית (או המתינו לטריגר הראשון) —
+   זה מגלה ספריות חדשות ויוצר את מנויי ה-webhook (אחד לכל ספרייה).
+3. ב-Admin > סנכרון, לחצו **הרצת הגירה מלאה** — מעתיקה את כל העץ הקיים
+   מכל הספריות הפעילות ל-Drive, כל ספרייה כתיקייה נפרדת בשורש (ריצה
+   חד-פעמית; ניתן להריץ שוב בבטחה במקרה כשל חלקי).
+4. מכאן ואילך, כל שינוי בכל אחד מהצדדים מסונכרן כמעט מיידית דרך ה-webhooks,
+   עם fallback של poll שעתי דרך ה-cron — שגם בודק בכל הרצה אם נוספו
+   ספריות חדשות באתר.
 
 ---
 

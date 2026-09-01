@@ -12,6 +12,7 @@ import { caseFolderName } from "@/lib/cases/slug";
 import { provisionCaseFolders } from "@/lib/cases/provision";
 import { scheduleTasksForCase } from "@/lib/cases/scheduleTasks";
 import { createClientAction } from "@/lib/actions/clients";
+import { getPrimaryCaseLibrary } from "@/lib/msgraph/libraries";
 
 export type CaseFormState = { error?: string } | undefined;
 
@@ -44,7 +45,20 @@ export async function createCaseAction(
 
   const db = await getDb();
   const caseNumber = await nextCaseNumber();
-  const folderPath = `Cases/${caseFolderName(caseNumber, title)}`;
+
+  // The case's folder must live under the primary case library (normally
+  // "תיקים פתוחים") — if none is configured yet, fall back to a
+  // placeholder prefix so the case record can still be created, and let
+  // provisioning fail below with a clear message instead of here.
+  let libraryName = "Cases";
+  let primaryLibraryConfigured = true;
+  try {
+    libraryName = (await getPrimaryCaseLibrary()).name;
+  } catch {
+    primaryLibraryConfigured = false;
+  }
+
+  const folderPath = `${libraryName}/${caseFolderName(caseNumber, title)}`;
   const caseId = newId("case");
 
   await db.insert(schema.cases).values({
@@ -88,11 +102,15 @@ export async function createCaseAction(
   await scheduleTasksForCase(caseId);
 
   let provisionError: string | undefined;
-  try {
-    await provisionCaseFolders(caseId);
-  } catch (err) {
-    provisionError = err instanceof Error ? err.message : String(err);
-    console.error("provisionCaseFolders failed", err);
+  if (!primaryLibraryConfigured) {
+    provisionError = "לא הוגדרה ספריית תיקים ראשית ב-SharePoint (ראו הגדרות סנכרון)";
+  } else {
+    try {
+      await provisionCaseFolders(caseId);
+    } catch (err) {
+      provisionError = err instanceof Error ? err.message : String(err);
+      console.error("provisionCaseFolders failed", err);
+    }
   }
 
   await logAction({

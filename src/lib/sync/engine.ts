@@ -7,9 +7,15 @@ import * as drive from "@/lib/googledrive/client";
 import { sha256Hex } from "@/lib/sync/hashing";
 import { resolveActorFromGraph, resolveActorFromDrive } from "@/lib/sync/identity";
 import { logAction } from "@/lib/audit";
+import {
+  listEnabledLibraries,
+  resolveLibraryFromDrivePath,
+  type SharepointLibrary,
+} from "@/lib/msgraph/libraries";
 
 // ---------------------------------------------------------------------------
-// Cursors (Graph delta link / Drive startPageToken persisted in D1)
+// Cursors (Graph delta link, per library / Drive startPageToken persisted
+// in D1)
 // ---------------------------------------------------------------------------
 
 async function getCursor(id: string): Promise<string | undefined> {
@@ -35,6 +41,10 @@ async function setCursor(id: string, value: string): Promise<void> {
   }
 }
 
+function graphCursorKey(driveId: string): string {
+  return `graph_delta_link:${driveId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
@@ -56,6 +66,7 @@ async function getMappingByDriveId(id: string): Promise<MappingRow | undefined> 
 async function upsertMapping(params: {
   itemType: "file" | "folder";
   relativePath: string;
+  sharepointDriveId: string;
   sharepointItemId: string;
   sharepointETag?: string | null;
   sharepointHash?: string | null;
@@ -73,6 +84,7 @@ async function upsertMapping(params: {
 
   const values = {
     itemType: params.itemType,
+    sharepointDriveId: params.sharepointDriveId,
     sharepointItemId: params.sharepointItemId,
     sharepointETag: params.sharepointETag ?? null,
     sharepointHash: params.sharepointHash ?? null,
@@ -128,29 +140,37 @@ async function resolveDriveParentRelativePath(parentDriveId: string): Promise<st
 export async function processGraphChanges(): Promise<{ processed: number; errors: string[] }> {
   const errors: string[] = [];
   let processed = 0;
+  const libraries = await listEnabledLibraries();
 
-  const link = await getCursor("graph_delta_link");
-  let page = await graph.deltaQuery(link);
-  let items = [...page.value];
-  while (page.nextLink) {
-    page = await graph.deltaQuery(page.nextLink);
-    items = items.concat(page.value);
-  }
-
-  for (const item of items) {
+  for (const library of libraries) {
     try {
-      await applyGraphItem(item);
-      processed += 1;
+      const link = await getCursor(graphCursorKey(library.driveId));
+      let page = await graph.deltaQuery(library.driveId, link);
+      let items = [...page.value];
+      while (page.nextLink) {
+        page = await graph.deltaQuery(library.driveId, page.nextLink);
+        items = items.concat(page.value);
+      }
+
+      for (const item of items) {
+        try {
+          await applyGraphItem(item, library);
+          processed += 1;
+        } catch (err) {
+          errors.push(`[${library.name}] ${item.name ?? item.id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      if (page.deltaLink) await setCursor(graphCursorKey(library.driveId), page.deltaLink);
     } catch (err) {
-      errors.push(`${item.name ?? item.id}: ${err instanceof Error ? err.message : String(err)}`);
+      errors.push(`[${library.name}]: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  if (page.deltaLink) await setCursor("graph_delta_link", page.deltaLink);
   return { processed, errors };
 }
 
-async function applyGraphItem(item: graph.GraphDriveItem): Promise<void> {
+async function applyGraphItem(item: graph.GraphDriveItem, library: SharepointLibrary): Promise<void> {
   const db = await getDb();
   if (!item.parentReference && !item.deleted) return; // drive-root pseudo item
 
@@ -176,8 +196,14 @@ async function applyGraphItem(item: graph.GraphDriveItem): Promise<void> {
     return;
   }
 
-  const newRelPath = graph.itemRelativePath(item);
-  const parentRelPath = graph.itemParentRelativePath(item);
+  // Paths relative to the library's own SharePoint root...
+  const newSpRelPath = graph.itemRelativePath(item);
+  const parentSpRelPath = graph.itemParentRelativePath(item);
+  // ...and their equivalents relative to the shared Google Drive root
+  // (every library lives under its own top-level folder there).
+  const newRelPath = `${library.name}/${newSpRelPath}`;
+  const parentRelPath = parentSpRelPath ? `${library.name}/${parentSpRelPath}` : library.name;
+
   const actor = await resolveActorFromGraph(
     item.lastModifiedBy?.user
       ? {
@@ -209,6 +235,7 @@ async function applyGraphItem(item: graph.GraphDriveItem): Promise<void> {
     await upsertMapping({
       itemType: "folder",
       relativePath: newRelPath,
+      sharepointDriveId: library.driveId,
       sharepointItemId: item.id,
       driveFileId: driveFolderId,
       direction: "sp_to_drive",
@@ -217,7 +244,7 @@ async function applyGraphItem(item: graph.GraphDriveItem): Promise<void> {
   }
 
   // --- File ---
-  const content = await graph.downloadFileContent(item.id);
+  const content = await graph.downloadFileContent(library.driveId, item.id);
   const hash = await sha256Hex(content);
 
   if (existingMapping?.sharepointHash === hash && existingMapping.relativePath === newRelPath) {
@@ -267,6 +294,7 @@ async function applyGraphItem(item: graph.GraphDriveItem): Promise<void> {
   await upsertMapping({
     itemType: "file",
     relativePath: newRelPath,
+    sharepointDriveId: library.driveId,
     sharepointItemId: item.id,
     sharepointETag: item.eTag,
     sharepointHash: hash,
@@ -349,8 +377,8 @@ async function applyDriveChange(change: drive.DriveChange): Promise<void> {
 
   if (change.removed || change.file?.trashed) {
     if (!existingMapping) return;
-    if (existingMapping.sharepointItemId) {
-      await graph.deleteItem(existingMapping.sharepointItemId).catch(() => undefined);
+    if (existingMapping.sharepointItemId && existingMapping.sharepointDriveId) {
+      await graph.deleteItem(existingMapping.sharepointDriveId, existingMapping.sharepointItemId).catch(() => undefined);
     }
     await db.delete(schema.syncMappings).where(eq(schema.syncMappings.id, existingMapping.id));
 
@@ -376,6 +404,17 @@ async function applyDriveChange(change: drive.DriveChange): Promise<void> {
   if (parentRelPath === null) return; // outside the tracked shared-root tree
 
   const newRelPath = parentRelPath ? `${parentRelPath}/${file.name}` : file.name;
+
+  // Which SharePoint library does this path belong to? (Its first path
+  // segment is a library's top-level folder name — see
+  // resolveLibraryFromDrivePath.) Anything else (e.g. a folder created
+  // directly under the shared Drive root, outside any library) has
+  // nowhere to sync back to in SharePoint, so we skip it.
+  const resolved = await resolveLibraryFromDrivePath(newRelPath);
+  if (!resolved) return;
+  const { library, spRelativePath: newSpRelPath } = resolved;
+  const parentSpRelPath = newSpRelPath.split("/").slice(0, -1).join("/");
+
   const isFolder = file.mimeType === "application/vnd.google-apps.folder";
   const actor = await resolveActorFromDrive(
     file.lastModifyingUser
@@ -387,17 +426,20 @@ async function applyDriveChange(change: drive.DriveChange): Promise<void> {
     let spItemId: string;
     if (existingMapping?.sharepointItemId) {
       if (existingMapping.relativePath !== newRelPath) {
-        const newParentSpId = await graph.ensureFolder(parentRelPath);
-        spItemId = (await graph.moveAndRenameItem(existingMapping.sharepointItemId, newParentSpId, file.name)).id;
+        const newParentSpId = await graph.ensureFolder(library.driveId, parentSpRelPath);
+        spItemId = (
+          await graph.moveAndRenameItem(library.driveId, existingMapping.sharepointItemId, newParentSpId, file.name)
+        ).id;
       } else {
         spItemId = existingMapping.sharepointItemId;
       }
     } else {
-      spItemId = await graph.ensureFolder(newRelPath);
+      spItemId = await graph.ensureFolder(library.driveId, newSpRelPath);
     }
     await upsertMapping({
       itemType: "folder",
       relativePath: newRelPath,
+      sharepointDriveId: library.driveId,
       sharepointItemId: spItemId,
       driveFileId: file.id,
       direction: "drive_to_sp",
@@ -411,13 +453,16 @@ async function applyDriveChange(change: drive.DriveChange): Promise<void> {
 
   // Conflict check: has SharePoint's copy changed independently?
   if (existingMapping?.sharepointItemId && existingMapping.sharepointHash) {
-    const liveItem = await graph.getItemById(existingMapping.sharepointItemId).catch(() => null);
+    const liveItem = await graph.getItemById(library.driveId, existingMapping.sharepointItemId).catch(() => null);
     if (liveItem?.file) {
-      const liveHash = await sha256Hex(await graph.downloadFileContent(existingMapping.sharepointItemId));
+      const liveHash = await sha256Hex(
+        await graph.downloadFileContent(library.driveId, existingMapping.sharepointItemId),
+      );
       if (liveHash !== existingMapping.sharepointHash) {
         const content = await drive.downloadFile(file.id);
         await graph.uploadFileContent(
-          `${parentRelPath ? parentRelPath + "/" : ""}${conflictFileName(file.name, "Google Drive")}`,
+          library.driveId,
+          `${parentSpRelPath ? parentSpRelPath + "/" : ""}${conflictFileName(file.name, "Google Drive")}`,
           content,
           file.mimeType,
         );
@@ -436,14 +481,15 @@ async function applyDriveChange(change: drive.DriveChange): Promise<void> {
   const contentHash = await sha256Hex(content);
 
   if (existingMapping?.sharepointItemId && existingMapping.relativePath !== newRelPath) {
-    const newParentSpId = await graph.ensureFolder(parentRelPath);
-    await graph.moveAndRenameItem(existingMapping.sharepointItemId, newParentSpId, file.name);
+    const newParentSpId = await graph.ensureFolder(library.driveId, parentSpRelPath);
+    await graph.moveAndRenameItem(library.driveId, existingMapping.sharepointItemId, newParentSpId, file.name);
   }
-  const spItem = await graph.uploadFileContent(newRelPath, content, file.mimeType);
+  const spItem = await graph.uploadFileContent(library.driveId, newSpRelPath, content, file.mimeType);
 
   await upsertMapping({
     itemType: "file",
     relativePath: newRelPath,
+    sharepointDriveId: library.driveId,
     sharepointItemId: spItem.id,
     sharepointETag: spItem.eTag,
     sharepointHash: contentHash,

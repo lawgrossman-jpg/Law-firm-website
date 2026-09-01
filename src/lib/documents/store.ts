@@ -11,10 +11,15 @@ import { logAction } from "@/lib/audit";
 /** Uploads a new document to SharePoint (source of truth), mirrors it
  * immediately to Google Drive, and records it in the documents table plus
  * a sync_mappings row. Used by both the document generator and manual
- * upload / scan ingestion. */
+ * upload / scan ingestion.
+ *
+ * The case must already have a SharePoint library assigned (set by
+ * provisionCaseFolders when the case was created) — that's what tells us
+ * which of the firm's ~12 document libraries to write into. */
 export async function storeCaseFile(params: {
   caseId: string;
-  /** Path relative to the library root, e.g. "Cases/2026-014-Cohen/מסמכים שנוצרו/ייפוי כוח.docx". */
+  /** Path relative to the shared Google Drive root, i.e. prefixed with the
+   * owning library's name, e.g. "תיקים פתוחים/2026-014-Cohen/מסמכים שנוצרו/ייפוי כוח.docx". */
   relativePath: string;
   fileName: string;
   content: Uint8Array;
@@ -23,9 +28,35 @@ export async function storeCaseFile(params: {
   employeeId: string;
 }): Promise<string> {
   const db = await getDb();
+
+  const [caseRow] = await db
+    .select({ sharepointLibraryId: schema.cases.sharepointLibraryId })
+    .from(schema.cases)
+    .where(eq(schema.cases.id, params.caseId))
+    .limit(1);
+  if (!caseRow?.sharepointLibraryId) {
+    throw new Error("case has no SharePoint library assigned — folder provisioning may have failed");
+  }
+  const [library] = await db
+    .select()
+    .from(schema.sharepointLibraries)
+    .where(eq(schema.sharepointLibraries.id, caseRow.sharepointLibraryId))
+    .limit(1);
+  if (!library) throw new Error("case's SharePoint library no longer exists");
+
+  if (!params.relativePath.startsWith(`${library.name}/`)) {
+    throw new Error(`relativePath "${params.relativePath}" is not under library "${library.name}"`);
+  }
+  const spRelativePath = params.relativePath.slice(library.name.length + 1);
+
   const contentHash = await sha256Hex(params.content);
 
-  const spItem = await graph.uploadFileContent(params.relativePath, params.content, params.mimeType);
+  const spItem = await graph.uploadFileContent(
+    library.driveId,
+    spRelativePath,
+    params.content,
+    params.mimeType,
+  );
 
   const parentPath = params.relativePath.split("/").slice(0, -1).join("/");
   const parentDriveId = await drive.ensureFolderPath(parentPath);
@@ -69,6 +100,7 @@ export async function storeCaseFile(params: {
     await db
       .update(schema.syncMappings)
       .set({
+        sharepointDriveId: library.driveId,
         sharepointItemId: spItem.id,
         sharepointETag: spItem.eTag ?? null,
         sharepointHash: contentHash,
@@ -83,6 +115,7 @@ export async function storeCaseFile(params: {
       id: newId("sm"),
       itemType: "file",
       relativePath: params.relativePath,
+      sharepointDriveId: library.driveId,
       sharepointItemId: spItem.id,
       sharepointETag: spItem.eTag ?? null,
       sharepointHash: contentHash,

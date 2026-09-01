@@ -118,8 +118,13 @@ export const cases = sqliteTable(
     responsibleEmployeeId: text("responsible_employee_id").references(
       () => employees.id,
     ),
-    // Root folder path relative to the SharePoint document library / the
-    // mirrored root on Google Drive, e.g. "Cases/2026-014-Cohen".
+    // Which SharePoint library (drive) this case's folder lives in —
+    // normally the primary case library (e.g. "תיקים פתוחים").
+    sharepointLibraryId: text("sharepoint_library_id"),
+    // Root folder path relative to the shared Google Drive root, prefixed
+    // with the library name, e.g. "תיקים פתוחים/2026-014-Cohen". The path
+    // relative to the SharePoint library's own root is this with the
+    // library-name prefix stripped.
     folderPath: text("folder_path").notNull(),
     sharepointFolderItemId: text("sharepoint_folder_item_id"),
     driveFolderId: text("drive_folder_id"),
@@ -298,6 +303,7 @@ export const auditActions = [
   "employee.update",
   "sync.conflict",
   "sync.migration_run",
+  "sync.library_update",
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
 
@@ -327,6 +333,27 @@ export const auditLog = sqliteTable(
 // SharePoint <-> Google Drive sync
 // ---------------------------------------------------------------------------
 
+// One row per SharePoint document library (drive) on the firm's site —
+// this site has ~12 libraries (תיקים פתוחים, תיקים סגורים, פסיקה, ...), all
+// synced in parallel. Each becomes a top-level folder (named `name`) under
+// the shared Google Drive root. `isPrimaryForCases` marks the single
+// library new case folders are auto-provisioned into (see
+// src/lib/cases/provision.ts) — normally "תיקים פתוחים".
+export const sharepointLibraries = sqliteTable(
+  "sharepoint_libraries",
+  {
+    id: text("id").primaryKey(),
+    driveId: text("drive_id").notNull(),
+    name: text("name").notNull(),
+    isPrimaryForCases: integer("is_primary_for_cases", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("sharepoint_libraries_drive_idx").on(t.driveId)],
+);
+
 export const syncItemTypes = ["file", "folder"] as const;
 export type SyncItemType = (typeof syncItemTypes)[number];
 
@@ -340,8 +367,13 @@ export const syncMappings = sqliteTable(
   {
     id: text("id").primaryKey(),
     itemType: text("item_type").$type<SyncItemType>().notNull(),
-    // Path relative to the shared root, identical on both sides when in sync.
+    // Path relative to the shared Google Drive root, prefixed with the
+    // owning library's name (e.g. "תיקים פתוחים/2026-014-Cohen/..."),
+    // identical on both sides when in sync.
     relativePath: text("relative_path").notNull(),
+    // Which SharePoint library (drive) this item lives in — needed to
+    // scope any Graph API call back to the right drive.
+    sharepointDriveId: text("sharepoint_drive_id"),
     sharepointItemId: text("sharepoint_item_id"),
     sharepointETag: text("sharepoint_etag"),
     sharepointHash: text("sharepoint_hash"),
@@ -391,16 +423,24 @@ export const syncCursors = sqliteTable("sync_cursors", {
     .default(sql`(CURRENT_TIMESTAMP)`),
 });
 
-export const webhookSubscriptions = sqliteTable("webhook_subscriptions", {
-  id: text("id").primaryKey(),
-  provider: text("provider").$type<WebhookProvider>().notNull(),
-  subscriptionId: text("subscription_id").notNull(),
-  resourceUri: text("resource_uri").notNull(),
-  // Drive push notification channels additionally need a resource ID.
-  driveResourceId: text("drive_resource_id"),
-  expirationDateTime: text("expiration_date_time").notNull(),
-  ...timestamps,
-});
+export const webhookSubscriptions = sqliteTable(
+  "webhook_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").$type<WebhookProvider>().notNull(),
+    subscriptionId: text("subscription_id").notNull(),
+    resourceUri: text("resource_uri").notNull(),
+    // For provider="graph": which library (drive) this subscription
+    // watches — one row per enabled library. Unused for provider="drive"
+    // (a single shared channel covers the whole Google Drive account).
+    sharepointDriveId: text("sharepoint_drive_id"),
+    // Drive push notification channels additionally need a resource ID.
+    driveResourceId: text("drive_resource_id"),
+    expirationDateTime: text("expiration_date_time").notNull(),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("webhook_subscriptions_drive_idx").on(t.sharepointDriveId)],
+);
 
 // ---------------------------------------------------------------------------
 // Phase-2 stub tables (schema ready, integrations not yet implemented):

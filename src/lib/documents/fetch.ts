@@ -1,6 +1,7 @@
 import "server-only";
 import * as graph from "@/lib/msgraph/client";
 import * as drive from "@/lib/googledrive/client";
+import { resolveLibraryFromDrivePath } from "@/lib/msgraph/libraries";
 import type { documents } from "@/db/schema";
 
 type DocumentRow = typeof documents.$inferSelect;
@@ -12,7 +13,9 @@ type DocumentRow = typeof documents.$inferSelect;
 export async function fetchDocumentBytes(doc: DocumentRow): Promise<ArrayBuffer> {
   const tryGraph = async () => {
     if (!doc.sharepointItemId) throw new Error("no sharepoint item id");
-    return graph.downloadFileContent(doc.sharepointItemId);
+    const resolved = await resolveLibraryFromDrivePath(doc.relativePath);
+    if (!resolved) throw new Error(`document path "${doc.relativePath}" is not under a known library`);
+    return graph.downloadFileContent(resolved.library.driveId, doc.sharepointItemId);
   };
   const tryDrive = async () => {
     if (!doc.driveFileId) throw new Error("no drive file id");

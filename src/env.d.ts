@@ -13,8 +13,11 @@ declare global {
     MS_TENANT_ID: string;
     MS_CLIENT_ID: string;
     MS_CLIENT_SECRET: string;
+    // Used for auto-discovering document libraries (see
+    // src/lib/msgraph/libraries.ts discoverLibraries) — the individual
+    // libraries synced live in the sharepoint_libraries D1 table, not an
+    // env var, since this firm's site has ~12 of them.
     MS_SHAREPOINT_SITE_ID: string;
-    MS_SHAREPOINT_DRIVE_ID: string;
     WEBHOOK_SHARED_SECRET: string;
 
     // Google Drive
