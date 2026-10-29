@@ -144,7 +144,26 @@ export async function processGraphChanges(): Promise<{ processed: number; errors
 
   for (const library of libraries) {
     try {
-      const link = await getCursor(graphCursorKey(library.driveId));
+      const cursorKey = graphCursorKey(library.driveId);
+      const link = await getCursor(cursorKey);
+
+      if (!link) {
+        // First run for this library: establish a baseline delta link
+        // without back-filling (the initial migration already mirrored
+        // the existing tree) — mirrors processDriveChanges()'s handling
+        // of a missing drive_page_token. Still has to page through the
+        // full initial delta to reach the final deltaLink (Graph gives no
+        // way to skip straight to it), but that's metadata-only listing,
+        // not per-item download+upload, so it's fast even for a library
+        // with thousands of items.
+        let page = await graph.deltaQuery(library.driveId);
+        while (page.nextLink) {
+          page = await graph.deltaQuery(library.driveId, page.nextLink);
+        }
+        if (page.deltaLink) await setCursor(cursorKey, page.deltaLink);
+        continue;
+      }
+
       let page = await graph.deltaQuery(library.driveId, link);
       let items = [...page.value];
       while (page.nextLink) {
@@ -161,7 +180,7 @@ export async function processGraphChanges(): Promise<{ processed: number; errors
         }
       }
 
-      if (page.deltaLink) await setCursor(graphCursorKey(library.driveId), page.deltaLink);
+      if (page.deltaLink) await setCursor(cursorKey, page.deltaLink);
     } catch (err) {
       errors.push(`[${library.name}]: ${err instanceof Error ? err.message : String(err)}`);
     }
