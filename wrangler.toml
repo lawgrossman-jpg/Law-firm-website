@@ -22,7 +22,7 @@ migrations_dir = "drizzle"
 # separate tiny worker instead — see cron-worker/.
 
 [vars]
-APP_BASE_URL = "https://REPLACE_WITH_YOUR_WORKERS_DEV_OR_CUSTOM_DOMAIN"
+APP_BASE_URL = "https://law-firm-websiteod.lawgrossman.workers.dev"
 
 # Secrets (do NOT put these here — set with `wrangler secret put <NAME>`):
 #   SESSION_JWT_SECRET
