@@ -73,6 +73,17 @@ async function walk(
         await maybeLinkCaseFolder(itemDrivePath, library);
         await walk(library, itemSpPath, itemDrivePath, driveFolderId, result);
       } else {
+        const existing = await getMappingByRelativePath(itemDrivePath);
+        if (existing?.sharepointETag && item.eTag && existing.sharepointETag === item.eTag) {
+          // Already migrated and unchanged since — skip the download+upload
+          // round trip entirely. Without this, a run cut off mid-library by
+          // the Worker's CPU/time limit (large libraries can have
+          // thousands of files) would redo the same already-copied files
+          // from the top on every retry instead of making progress.
+          result.filesCopied += 1;
+          continue;
+        }
+
         const content = await graph.downloadFileContent(library.driveId, item.id);
         const hash = await sha256Hex(content);
         const driveFile = await drive.uploadFile({
@@ -98,6 +109,18 @@ async function walk(
       result.errors.push(`${itemDrivePath}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+}
+
+async function getMappingByRelativePath(
+  relativePath: string,
+): Promise<typeof schema.syncMappings.$inferSelect | undefined> {
+  const db = await getDb();
+  const [row] = await db
+    .select()
+    .from(schema.syncMappings)
+    .where(eq(schema.syncMappings.relativePath, relativePath))
+    .limit(1);
+  return row;
 }
 
 async function upsertMapping(params: {
