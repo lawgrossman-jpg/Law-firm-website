@@ -7,6 +7,7 @@ import * as drive from "@/lib/googledrive/client";
 import { sha256Hex } from "@/lib/sync/hashing";
 import { logAction } from "@/lib/audit";
 import { listEnabledLibraries, type SharepointLibrary } from "@/lib/msgraph/libraries";
+import { getDriveAccessTokenNoDelegation } from "@/lib/googledrive/token";
 
 type MigrationResult = { foldersCopied: number; filesCopied: number; errors: string[] };
 
@@ -37,6 +38,24 @@ export async function runInitialMigration(triggeredByEmployeeId: string): Promis
   } catch (err) {
     result.errors.push(
       `[DEBUG] root folder id=${driveRootId} (length ${driveRootId.length}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // Second diagnostic: same lookup, but with a token that carries NO "sub"
+  // claim at all — true bare service-account auth, not delegation of
+  // anyone. Isolates whether this is a delegation-layer problem.
+  // TEMPORARY — remove once resolved.
+  try {
+    const token = await getDriveAccessTokenNoDelegation();
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${driveRootId}?fields=id,name,trashed&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const bodyText = await res.text();
+    result.errors.push(`[DEBUG-NODELEGATION] status=${res.status} body=${bodyText}`);
+  } catch (err) {
+    result.errors.push(
+      `[DEBUG-NODELEGATION] threw: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 

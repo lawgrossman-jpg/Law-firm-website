@@ -57,3 +57,36 @@ export async function getDriveAccessToken(impersonateEmail?: string): Promise<st
   tokenCache.set(subject, token);
   return token.token;
 }
+
+/** TEMPORARY diagnostic: acquires a token with no "sub" claim at all — true
+ * bare service-account auth, not domain-wide-delegation impersonation of
+ * anyone (not even the service account's own address). Used to isolate
+ * whether a stubborn Drive 404 is a delegation-layer issue vs. something
+ * else. Remove once resolved. */
+export async function getDriveAccessTokenNoDelegation(): Promise<string> {
+  const { env } = await getCloudflareContext({ async: true });
+  const pem = env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, "\n");
+  const privateKey = await importPKCS8(pem, "RS256");
+  const now = Math.floor(Date.now() / 1000);
+  const jwt = await new SignJWT({ scope: "https://www.googleapis.com/auth/drive" })
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setIssuer(env.GOOGLE_SERVICE_ACCOUNT_EMAIL)
+    .setAudience("https://oauth2.googleapis.com/token")
+    .setIssuedAt(now)
+    .setExpirationTime(now + 3600)
+    .sign(privateKey);
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to acquire no-delegation Drive token: ${res.status} ${await res.text()}`);
+  }
+  const data = (await res.json()) as { access_token: string };
+  return data.access_token;
+}
