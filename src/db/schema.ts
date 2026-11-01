@@ -206,6 +206,69 @@ export const tasks = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// נזיקין: medical-record requests + damage heads
+// ---------------------------------------------------------------------------
+
+export const medicalRecordRequestStatuses = [
+  "requested",
+  "reminder_sent",
+  "received",
+  "sent_to_expert",
+  "cancelled",
+] as const;
+export type MedicalRecordRequestStatus = (typeof medicalRecordRequestStatuses)[number];
+
+// Tracks a request for medical records from an external source (hospital,
+// HMO) through its lifecycle, per case.
+export const medicalRecordRequests = sqliteTable(
+  "medical_record_requests",
+  {
+    id: text("id").primaryKey(),
+    caseId: text("case_id")
+      .notNull()
+      .references(() => cases.id, { onDelete: "cascade" }),
+    sourceName: text("source_name").notNull(),
+    description: text("description"),
+    status: text("status")
+      .$type<MedicalRecordRequestStatus>()
+      .notNull()
+      .default("requested"),
+    requestedAt: text("requested_at")
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    remindersSentCount: integer("reminders_sent_count").notNull().default(0),
+    lastReminderAt: text("last_reminder_at"),
+    receivedAt: text("received_at"),
+    sentToExpertAt: text("sent_to_expert_at"),
+    assignedToId: text("assigned_to_id").references(() => employees.id),
+    notes: text("notes"),
+    ...timestamps,
+  },
+  (t) => [
+    index("medical_record_requests_case_idx").on(t.caseId),
+    index("medical_record_requests_status_idx").on(t.status),
+  ],
+);
+
+// Compensation line-items (ראשי נזק) for a tort case — estimated vs.
+// proposed/agreed amount per head of damage.
+export const damageHeads = sqliteTable(
+  "damage_heads",
+  {
+    id: text("id").primaryKey(),
+    caseId: text("case_id")
+      .notNull()
+      .references(() => cases.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    estimatedAmount: real("estimated_amount").notNull().default(0),
+    proposedAmount: real("proposed_amount"),
+    notes: text("notes"),
+    ...timestamps,
+  },
+  (t) => [index("damage_heads_case_idx").on(t.caseId)],
+);
+
+// ---------------------------------------------------------------------------
 // Documents / document generator
 // ---------------------------------------------------------------------------
 
@@ -289,6 +352,8 @@ export const auditActions = [
   "case.create",
   "case.update",
   "case.close",
+  "case_type.create",
+  "case_type.update",
   "task.create",
   "task.update",
   "task.complete",
@@ -299,6 +364,11 @@ export const auditActions = [
   "document.generate",
   "document.delete",
   "document.sync_update",
+  "medical_record_request.create",
+  "medical_record_request.update",
+  "damage_head.create",
+  "damage_head.update",
+  "damage_head.delete",
   "employee.create",
   "employee.update",
   "sync.conflict",

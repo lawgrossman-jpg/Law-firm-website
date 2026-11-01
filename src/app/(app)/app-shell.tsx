@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/documents/generate", label: "מחולל מסמכים" },
   { href: "/admin/sync", label: "סנכרון SharePoint ↔ Drive" },
   { href: "/admin/employees", label: "עובדים" },
+  { href: "/admin/case-types", label: "סוגי תיקים" },
   { href: "/admin/audit-log", label: "יומן אירועים" },
 ];
 

@@ -6,6 +6,10 @@ import { updateCaseStatusAction } from "@/lib/actions/cases";
 import { NewTaskInlineForm } from "@/app/(app)/tasks/new-task-inline-form";
 import { TaskStatusSelect } from "@/app/(app)/tasks/task-status-select";
 import { UploadDocumentForm } from "@/app/(app)/cases/[id]/upload-document-form";
+import { MedicalRecordRequestStatusSelect } from "@/app/(app)/cases/[id]/medical-record-request-status-select";
+import { NewMedicalRecordRequestInlineForm } from "@/app/(app)/cases/[id]/new-medical-record-request-inline-form";
+import { DamageHeadRow } from "@/app/(app)/cases/[id]/damage-head-row";
+import { createDamageHeadAction } from "@/lib/actions/damageHeads";
 
 const PARTY_ROLE_LABELS: Record<string, string> = {
   plaintiff: "תובע",
@@ -27,17 +31,32 @@ export default async function CaseDetailPage({
   const [caseRow] = await db.select().from(schema.cases).where(eq(schema.cases.id, id)).limit(1);
   if (!caseRow) notFound();
 
-  const [client, parties, caseTasks, documents, employees] = await Promise.all([
-    db.select().from(schema.clients).where(eq(schema.clients.id, caseRow.clientId)).limit(1),
-    db.select().from(schema.caseParties).where(eq(schema.caseParties.caseId, id)),
-    db.select().from(schema.tasks).where(eq(schema.tasks.caseId, id)).orderBy(schema.tasks.dueDate),
-    db
-      .select()
-      .from(schema.documents)
-      .where(eq(schema.documents.caseId, id))
-      .orderBy(desc(schema.documents.createdAt)),
-    db.select().from(schema.employees).where(eq(schema.employees.active, true)),
-  ]);
+  const [client, parties, caseTasks, documents, employees, medicalRecordRequests, damageHeads] =
+    await Promise.all([
+      db.select().from(schema.clients).where(eq(schema.clients.id, caseRow.clientId)).limit(1),
+      db.select().from(schema.caseParties).where(eq(schema.caseParties.caseId, id)),
+      db.select().from(schema.tasks).where(eq(schema.tasks.caseId, id)).orderBy(schema.tasks.dueDate),
+      db
+        .select()
+        .from(schema.documents)
+        .where(eq(schema.documents.caseId, id))
+        .orderBy(desc(schema.documents.createdAt)),
+      db.select().from(schema.employees).where(eq(schema.employees.active, true)),
+      db
+        .select()
+        .from(schema.medicalRecordRequests)
+        .where(eq(schema.medicalRecordRequests.caseId, id))
+        .orderBy(desc(schema.medicalRecordRequests.createdAt)),
+      db
+        .select()
+        .from(schema.damageHeads)
+        .where(eq(schema.damageHeads.caseId, id))
+        .orderBy(schema.damageHeads.createdAt),
+    ]);
+
+  const estimatedTotal = damageHeads.reduce((sum, d) => sum + d.estimatedAmount, 0);
+  const proposedTotal = damageHeads.reduce((sum, d) => sum + (d.proposedAmount ?? 0), 0);
+  const damageDelta = estimatedTotal - proposedTotal;
 
   return (
     <div className="flex flex-col gap-8">
@@ -143,6 +162,127 @@ export default async function CaseDetailPage({
           </table>
         </div>
         <NewTaskInlineForm caseId={caseRow.id} employees={employees.map((e) => ({ id: e.id, fullName: e.fullName }))} />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-lg font-medium text-slate-900">בקשות חומר רפואי</h2>
+        <div className="mb-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-right text-slate-500">
+              <tr>
+                <th className="px-4 py-2 font-medium">מקור</th>
+                <th className="px-4 py-2 font-medium">תיאור</th>
+                <th className="px-4 py-2 font-medium">אחראי</th>
+                <th className="px-4 py-2 font-medium">תזכורות</th>
+                <th className="px-4 py-2 font-medium">סטטוס</th>
+              </tr>
+            </thead>
+            <tbody>
+              {medicalRecordRequests.length === 0 && (
+                <tr>
+                  <td className="px-4 py-3 text-slate-400" colSpan={5}>
+                    אין בקשות חומר רפואי
+                  </td>
+                </tr>
+              )}
+              {medicalRecordRequests.map((r) => (
+                <tr key={r.id} className="border-t border-slate-100">
+                  <td className="px-4 py-2">{r.sourceName}</td>
+                  <td className="px-4 py-2 text-slate-600">{r.description ?? "—"}</td>
+                  <td className="px-4 py-2">
+                    {employees.find((e) => e.id === r.assignedToId)?.fullName ?? "—"}
+                  </td>
+                  <td className="px-4 py-2">{r.remindersSentCount}</td>
+                  <td className="px-4 py-2">
+                    <MedicalRecordRequestStatusSelect
+                      requestId={r.id}
+                      caseId={caseRow.id}
+                      status={r.status}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <NewMedicalRecordRequestInlineForm
+          caseId={caseRow.id}
+          employees={employees.map((e) => ({ id: e.id, fullName: e.fullName }))}
+        />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-lg font-medium text-slate-900">ראשי נזק</h2>
+        <div className="mb-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-right text-slate-500">
+              <tr>
+                <th className="px-4 py-2 font-medium">ראש נזק</th>
+                <th className="px-4 py-2 font-medium">סכום משוער</th>
+                <th className="px-4 py-2 font-medium">סכום מוצע/מוסכם</th>
+                <th className="px-4 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {damageHeads.length === 0 && (
+                <tr>
+                  <td className="px-4 py-3 text-slate-400" colSpan={4}>
+                    אין ראשי נזק
+                  </td>
+                </tr>
+              )}
+              {damageHeads.map((d) => (
+                <DamageHeadRow key={d.id} caseId={caseRow.id} damageHead={d} />
+              ))}
+            </tbody>
+            {damageHeads.length > 0 && (
+              <tfoot>
+                <tr className="border-t border-slate-200 bg-slate-50 font-medium">
+                  <td className="px-4 py-2">סה״כ</td>
+                  <td className="px-4 py-2">{estimatedTotal.toLocaleString("he-IL")}</td>
+                  <td className="px-4 py-2">{proposedTotal.toLocaleString("he-IL")}</td>
+                  <td className={`px-4 py-2 ${damageDelta >= 0 ? "text-red-700" : "text-green-700"}`}>
+                    הפרש: {damageDelta.toLocaleString("he-IL")}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        <form
+          action={createDamageHeadAction}
+          className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-slate-300 p-3"
+        >
+          <input type="hidden" name="caseId" value={caseRow.id} />
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-500">ראש נזק</label>
+            <input name="label" required className="rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-500">סכום משוער</label>
+            <input
+              name="estimatedAmount"
+              type="number"
+              step="0.01"
+              className="w-32 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-500">סכום מוצע/מוסכם</label>
+            <input
+              name="proposedAmount"
+              type="number"
+              step="0.01"
+              className="w-32 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <button
+            type="submit"
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
+          >
+            הוספת ראש נזק
+          </button>
+        </form>
       </section>
 
       <section>
