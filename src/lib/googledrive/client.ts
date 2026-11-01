@@ -21,13 +21,22 @@ async function rootFolderId(): Promise<string> {
   return env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
 }
 
+// Always requested, even for plain "My Drive" files: under domain-wide
+// delegation (acting as an impersonated user rather than the service
+// account's own identity), Drive's API can otherwise 404 on items the
+// impersonated user genuinely owns/can see in the UI — Google's
+// documented fix is to pass these on every call, not just Shared Drive
+// ones. Harmless/ignored where not applicable.
+const DRIVE_ALL_DRIVES_PARAMS = "supportsAllDrives=true&includeItemsFromAllDrives=true";
+
 async function driveFetch(
   path: string,
   init: RequestInit = {},
   actAsEmail?: string,
 ): Promise<Response> {
   const token = await getDriveAccessToken(actAsEmail);
-  const url = path.startsWith("http") ? path : `${DRIVE_BASE}${path}`;
+  const base = path.startsWith("http") ? path : `${DRIVE_BASE}${path}`;
+  const url = `${base}${base.includes("?") ? "&" : "?"}${DRIVE_ALL_DRIVES_PARAMS}`;
   return fetch(url, {
     ...init,
     headers: {
@@ -123,8 +132,8 @@ export async function uploadFile(params: {
   body.set(tail, head.length + contentBytes.length);
 
   const path = params.existingFileId
-    ? `/files/${params.existingFileId}?uploadType=multipart&fields=id,name,mimeType,md5Checksum,modifiedTime`
-    : `/files?uploadType=multipart&fields=id,name,mimeType,md5Checksum,modifiedTime`;
+    ? `/files/${params.existingFileId}?uploadType=multipart&fields=id,name,mimeType,md5Checksum,modifiedTime&${DRIVE_ALL_DRIVES_PARAMS}`
+    : `/files?uploadType=multipart&fields=id,name,mimeType,md5Checksum,modifiedTime&${DRIVE_ALL_DRIVES_PARAMS}`;
   const method = params.existingFileId ? "PATCH" : "POST";
 
   const token = await getDriveAccessToken(params.actAsEmail);
