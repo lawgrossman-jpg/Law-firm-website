@@ -25,6 +25,21 @@ export async function runInitialMigration(triggeredByEmployeeId: string): Promis
   const driveRootId = await drive.getRootFolderId();
   const libraries = await listEnabledLibraries();
 
+  // One-off diagnostic: confirm the configured root folder id is actually
+  // reachable at all before attempting any library, and surface exactly
+  // what id/error we're dealing with (TEMPORARY — remove once the
+  // domain-wide-delegation 404 investigation is resolved).
+  try {
+    const rootMeta = await drive.getFileMetadata(driveRootId);
+    result.errors.push(
+      `[DEBUG] root folder OK: id=${driveRootId} name=${JSON.stringify(rootMeta.name)} trashed=${rootMeta.trashed}`,
+    );
+  } catch (err) {
+    result.errors.push(
+      `[DEBUG] root folder id=${driveRootId} (length ${driveRootId.length}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   for (const library of libraries) {
     try {
       const libraryDriveFolderId = await drive.ensureFolder(driveRootId, library.name);
