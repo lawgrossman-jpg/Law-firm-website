@@ -45,8 +45,8 @@ export default async function AuditLogPage() {
                   {r.entityType}
                   {r.entityId ? ` #${r.entityId.slice(0, 8)}` : ""}
                 </td>
-                <td className="max-w-xs truncate px-4 py-2 text-slate-500">
-                  {r.details ? JSON.stringify(r.details) : ""}
+                <td className="max-w-xl whitespace-pre-wrap break-words px-4 py-2 text-slate-500">
+                  {r.details ? JSON.stringify(r.details, null, 2) : ""}
                 </td>
               </tr>
             ))}
