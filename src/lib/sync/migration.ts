@@ -7,7 +7,6 @@ import * as drive from "@/lib/googledrive/client";
 import { sha256Hex } from "@/lib/sync/hashing";
 import { logAction } from "@/lib/audit";
 import { listEnabledLibraries, type SharepointLibrary } from "@/lib/msgraph/libraries";
-import { getDriveAccessTokenNoDelegation } from "@/lib/googledrive/token";
 
 type MigrationResult = { foldersCopied: number; filesCopied: number; errors: string[] };
 
@@ -25,39 +24,6 @@ export async function runInitialMigration(triggeredByEmployeeId: string): Promis
   const result: MigrationResult = { foldersCopied: 0, filesCopied: 0, errors: [] };
   const driveRootId = await drive.getRootFolderId();
   const libraries = await listEnabledLibraries();
-
-  // One-off diagnostic: confirm the configured root folder id is actually
-  // reachable at all before attempting any library, and surface exactly
-  // what id/error we're dealing with (TEMPORARY — remove once the
-  // domain-wide-delegation 404 investigation is resolved).
-  try {
-    const rootMeta = await drive.getFileMetadata(driveRootId);
-    result.errors.push(
-      `[DEBUG] root folder OK: id=${driveRootId} name=${JSON.stringify(rootMeta.name)} trashed=${rootMeta.trashed}`,
-    );
-  } catch (err) {
-    result.errors.push(
-      `[DEBUG] root folder id=${driveRootId} (length ${driveRootId.length}): ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  // Second diagnostic: same lookup, but with a token that carries NO "sub"
-  // claim at all — true bare service-account auth, not delegation of
-  // anyone. Isolates whether this is a delegation-layer problem.
-  // TEMPORARY — remove once resolved.
-  try {
-    const token = await getDriveAccessTokenNoDelegation();
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${driveRootId}?fields=id,name,trashed&supportsAllDrives=true`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-    const bodyText = await res.text();
-    result.errors.push(`[DEBUG-NODELEGATION] status=${res.status} body=${bodyText}`);
-  } catch (err) {
-    result.errors.push(
-      `[DEBUG-NODELEGATION] threw: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
 
   for (const library of libraries) {
     try {
